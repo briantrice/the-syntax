@@ -34,6 +34,10 @@ doctool = 'poesy'
 #  sh "rsync -a -P -e \"ssh -p 7331\" _#{doctool}/ alex@atomy-lang.org:/srv/http/atomy-lang.org/site/docs/"
 #end
 
+task :spec do
+  sh "rspec ./spec/parser_spec.rb"
+end
+
 task :test do
   sh "./bin/#{project} test/main.#{filename_ext}"
 end
