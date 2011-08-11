@@ -71,6 +71,17 @@ keyword_message_part = keyword binary_expression
 keyword_message = keyword_message keyword_message_part
                 | keyword_message_part
 
+mixfix_message = keyword_message reverse_keyword
+
+numeral = /[0-9]+/
+
+integer = < /[+-]?/ numeral > { text }
+
+float = < integer "." integer > { text }
+
+number = integer
+       | float
+
 base_expression = literal
                 | identifier
 
@@ -78,14 +89,25 @@ unary_message = unit identifier*
 
 statement_separator = "." significant_whitespace
 
-statements = statements statement_separator
+comma = "," significant_whitespace
+
+statements = statements statement_separator statement
            | statement
 
 group = "(" statements ")"
 
 block = "{" statements "}"
 
-list = "[" statements "]"
+splat = splat comma 
+      | statement
+
+list = "[" splat "]"
+
+literal = string
+        | number
+        | list
+        | group
+        | block
 
          escape = number_escapes | escapes
 
