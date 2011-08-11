@@ -1,0 +1,152 @@
+%% name = TheSyntax::Parser
+
+%% {
+
+}
+
+ALPHA = /[A-Za-z]/
+DIGIT = /[0-9]/
+
+eof = !.
+spaces = (" " | "\t" | comment)*
+whitespace = (" " | "\t" | "\n" | comment)*
+significant_spaces = (" " | "\t" | comment)+
+significant_whitespace = (" " | "\t" | "\n" | comment)+
+line = { current_line }
+column = { current_column }
+
+identifier_start_char = < /\p{Ll}_/u > { text }
+# \p{S} matches ["$", "+", "<", "=", ">", "^", "`", "|", "~"]
+identifier_char = < /[\p{S}!@ %&*\-\\:.\/\?]/u > { text }
+
+multiline_comment = "(\"" in_multi
+         in_multi = /[^\"\(\)]*/ "\")"
+                  | /[^\"\(\)]*/ "(\"" in_multi /[^\"\(\)]*/ "\")"
+                  | /[^\"\(\)]*/ /[-{}]/ in_multi
+          comment = /# .*?$/
+                  | multiline_comment
+
+operator_chars = /[~`!@#$\%^\&*\\+\-\/?:<=>\|]/
+        equals = "="
+operator_chars_sans_equals = /[~`!@#$\%^\&*\\+\-\/?:<>\|]/
+
+%% {
+  def unary_send(arg, selector)
+    AST::UnarySend.new(arg, selector)
+  end
+
+  def special_op(left, right, op)
+    AST::SpecialOp.new(left, right, op)
+  end
+
+  def binary_send(left, right, op)
+    AST::BinarySend.new(left, right, selector)
+  end
+
+  def keyword_send(args, selector)
+    AST::KeywordSend.new(args, selector)
+  end
+}
+
+colon = ":"
+
+special_operator = < operator_chars* operator_chars_sans_equals{1,2} equals > { text }
+        operator = < operator_chars+ > &{ text != colon } { text }
+
+     identifier = < identifier_start_char identifier_char* > { text }
+        keyword = < identifier_start_char identifier_char* colon > { text }
+reverse_keyword = < colon identifier_start_char identifier_char* > { text }
+
+special_prefix_chars = /[`]/
+
+unary_expression = base_expression identifier*
+
+binary_expression = binary_expression binary_message
+                  | unary_expression
+
+binary_message = binary_selector unary_expression
+
+keyword_message_part = keyword binary_expression
+
+keyword_message = keyword_message keyword_message_part
+                | keyword_message_part
+
+base_expression = literal
+                | identifier
+
+unary_message = unit identifier*
+
+statement_separator = "." significant_whitespace
+
+statements = statements statement_separator
+           | statement
+
+group = "(" statements ")"
+
+block = "{" statements "}"
+
+list = "[" statements "]"
+
+         escape = number_escapes | escapes
+
+        str_seq = < /[^\\\"]+/ > { text }
+         string = "\"" < (("\\" escape) | str_seq)*:c > "\""
+                    { AST::String.new(
+                        c.join,
+                        text.gsub("\\\"", "\"")
+                      )
+                    }
+
+        escapes = "n" { "\n" }
+                | "s" { " " }
+                | "r" { "\r" }
+                | "t" { "\t" }
+                | "v" { "\v" }
+                | "f" { "\f" }
+                | "b" { "\b" }
+                | "a" { "\a" }
+                | "e" { "\e" }
+                | "\\" { "\\" }
+                | "\"" { "\"" }
+                | "BS" { "\b" }
+                | "HT" { "\t" }
+                | "LF" { "\n" }
+                | "VT" { "\v" }
+                | "FF" { "\f" }
+                | "CR" { "\r" }
+                | "SO" { "\016" }
+                | "SI" { "\017" }
+                | "EM" { "\031" }
+                | "FS" { "\034" }
+                | "GS" { "\035" }
+                | "RS" { "\036" }
+                | "US" { "\037" }
+                | "SP" { " " }
+                | "NUL" { "\000" }
+                | "SOH" { "\001" }
+                | "STX" { "\002" }
+                | "ETX" { "\003" }
+                | "EOT" { "\004" }
+                | "ENQ" { "\005" }
+                | "ACK" { "\006" }
+                | "BEL" { "\a" }
+                | "DLE" { "\020" }
+                | "DC1" { "\021" }
+                | "DC2" { "\022" }
+                | "DC3" { "\023" }
+                | "DC4" { "\024" }
+                | "NAK" { "\025" }
+                | "SYN" { "\026" }
+                | "ETB" { "\027" }
+                | "CAN" { "\030" }
+                | "SUB" { "\032" }
+                | "ESC" { "\e" }
+                | "DEL" { "\177" }
+                | < . > { "\\" + text }
+
+ number_escapes = /[xX]/ < /[0-9a-fA-F]{1,5}/ > { [text.to_i(16)].pack("U") }
+                | < /\d{1,6}/ > { [text.to_i].pack("U") }
+                | /[oO]/ < /[0-7]{1,7}/ > { [text.to_i(16)].pack("U") }
+                | /[uU]/ < /[0-9a-fA-F]{4}/ > { [text.to_i(16)].pack("U") }
+
+root = whitespace statements:body whitespace { Array(body) }

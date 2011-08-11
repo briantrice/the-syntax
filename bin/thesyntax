@@ -1,0 +1,129 @@
+#!/usr/bin/env rbx
+# vim: ft=ruby
+
+base = File.expand_path "../../lib/", __FILE__
+kernel = File.expand_path "../../kernel/", __FILE__
+
+project = File.basename(__FILE__)
+
+puts project
+
+require 'readline'
+require 'optparse'
+
+require base + "/" + project
+
+options = {}
+
+unless ARGV.empty? || ARGV[0][0] != ?-
+  OptionParser.new do |o|
+    o.banner = "usage: #{project} [options]"
+
+    o.on("-B", "--print-bytecode", "print out compiled bytecode") do |v|
+      options[:debug] = v
+    end
+
+    o.on("-e", "--evaluate EXPR", "evaluate EXPR and print the result") do |v|
+      options[:evaluate] = v
+    end
+
+    o.on("-s", "--before-start EXPR", "evaluate EXPR beforehand") do |v|
+      options[:start] = v
+    end
+
+    o.on("-l", "--load FILE", "load FILENAME and start the REPL") do |v|
+      options[:load] = v
+    end
+
+    o.on("-d", "--documentation DIR", "generate documentation with output to DIR") do |v|
+      TheSyntax::CodeLoader.documentation = v
+    end
+
+    o.on("-x", "--skip-kernel", "don't load the kernel") do
+      options[:skip_kernel] = true
+    end
+
+    o.on_tail("-h", "--help", "show this message") do
+      puts o
+      exit
+    end
+  end.parse!
+end
+
+unless options[:skip_kernel]
+  a = Time.now
+  puts "loading kernel"
+  TheSyntax.import(kernel + "/boot.ay")
+  puts Time.now - a
+end
+
+def run(options)
+  if str = options[:evaluate] || options[:start]
+    $0 = "(eval)"
+    res = TheSyntax::Compiler.evaluate(
+      str,
+      nil,
+      "(eval)",
+      1,
+      options[:debug]
+    )
+
+    if options[:evaluate]
+      if res.respond_to?(:write)
+        res.write
+      else
+        p(res)
+      end
+      return
+    end
+  end
+
+  if file = options[:load] || ARGV[0]
+    $0 = file
+    TheSyntax.import(file, ARGV[0] ? :run : :load, options[:debug])
+    return if ARGV[0]
+  end
+
+  if respond_to?(:repl, true)
+    send(:repl, File.expand_path("~/.#{project}_history"))
+  else
+    $stderr.puts("main REPL startup failed! here's a basic one:")
+
+    history_file = File.expand_path("~/.#{project}_history")
+
+    if File.exists?(history_file)
+      File.open(history_file, "r") do |f|
+        f.readlines.each do |l|
+          Readline::HISTORY << l.strip
+        end
+      end
+    end
+
+    begin
+      sane_history = []
+      while str = Readline.readline("> ")
+        next if str.empty?
+
+        sane_history << str
+
+        begin
+          res = TheSyntax::Compiler.evaluate str, TOPLEVEL_BINDING
+          if res.respond_to?(:pretty)
+            puts "=> #{res.pretty.render}"
+          else
+            puts "=> #{res.inspect}"
+          end
+        rescue StandardError => e
+          puts "#{e.class.name}: #{e.message}"
+          puts Rubinius::Backtrace.backtrace(e.locations).show
+        end
+      end
+    ensure
+      File.open(history_file, "a") do |f|
+        f.puts(*sane_history)
+      end
+    end
+  end
+end
+
+run(options)
