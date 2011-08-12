@@ -8,10 +8,11 @@ ALPHA = /[A-Za-z]/
 DIGIT = /[0-9]/
 
 eof = !.
-spaces = (" " | "\t" | comment)*
-whitespace = (" " | "\t" | "\n" | comment)*
-significant_spaces = (" " | "\t" | comment)+
-significant_whitespace = (" " | "\t" | "\n" | comment)+
+space = " " | "\t"
+nl = "\n"
+spaces = space+
+- = (" " | "\t" | "\n")*
+
 line = { current_line }
 column = { current_column }
 
@@ -23,8 +24,8 @@ multiline_comment = "(\"" in_multi
          in_multi = /[^\"\(\)]*/ "\")"
                   | /[^\"\(\)]*/ "(\"" in_multi /[^\"\(\)]*/ "\")"
                   | /[^\"\(\)]*/ /[-{}]/ in_multi
+#          comment = /# .*?$/ | multiline_comment
           comment = /# .*?$/
-                  | multiline_comment
 
 operator_chars = /[~`!@#$\%^\&*\\+\-\/?:<=>\|]/
         equals = "="
@@ -50,74 +51,16 @@ operator_chars_sans_equals = /[~`!@#$\%^\&*\\+\-\/?:<>\|]/
 
 colon = ":"
 
-special_operator = < operator_chars* operator_chars_sans_equals{1,2} equals > { text }
+special_operator = < operator_chars* operator_chars_sans_equals[1,2] equals > { text }
         operator = < operator_chars+ > &{ text != colon } { text }
 
-     identifier = < identifier_start_char identifier_char* > { text }
+ unary_selector = < identifier_start_char identifier_char* > { text }
         keyword = < identifier_start_char identifier_char* colon > { text }
 reverse_keyword = < colon identifier_start_char identifier_char* > { text }
 
 special_prefix_chars = /[`]/
 
-unary_expression = base_expression identifier*
-
-binary_expression = binary_expression binary_message
-                  | unary_expression
-
-binary_message = binary_selector unary_expression
-
-keyword_message_part = keyword binary_expression
-
-keyword_message = keyword_message keyword_message_part
-                | keyword_message_part
-
-mixfix_message = keyword_message reverse_keyword
-
-numeral = /[0-9]+/
-
-integer = < /[+-]?/ numeral > { text }
-
-float = < integer "." integer > { text }
-
-number = integer
-       | float
-
-base_expression = literal
-                | identifier
-
-unary_message = unit identifier*
-
-statement_separator = "." significant_whitespace
-
-comma = "," significant_whitespace
-
-statements = statements statement_separator statement
-           | statement
-
-group = "(" statements ")"
-
-block = "{" statements "}"
-
-splat = splat comma 
-      | statement
-
-list = "[" splat "]"
-
-literal = string
-        | number
-        | list
-        | group
-        | block
-
-         escape = number_escapes | escapes
-
         str_seq = < /[^\\\"]+/ > { text }
-         string = "\"" < (("\\" escape) | str_seq)*:c > "\""
-                    { AST::String.new(
-                        c.join,
-                        text.gsub("\\\"", "\"")
-                      )
-                    }
 
         escapes = "n" { "\n" }
                 | "s" { " " }
@@ -171,4 +114,66 @@ literal = string
                 | /[oO]/ < /[0-7]{1,7}/ > { [text.to_i(16)].pack("U") }
                 | /[uU]/ < /[0-9a-fA-F]{4}/ > { [text.to_i(16)].pack("U") }
 
-root = whitespace statements:body whitespace { Array(body) }
+escape = number_escapes | escapes
+
+string = "\"" < (("\\" escape) | str_seq)*:c > "\"" { c.join }
+
+integer = < /[+-]?[1-9][0-9]+/ >
+  { text.to_i }
+
+float = < integer "." integer >
+  { text.to_f }
+
+number = integer
+       | float
+
+literal = string
+        | number
+        | list
+        | group
+        | block
+
+base_expression = literal
+                | unary_selector
+
+unary_expression = base_expression unary_selector*
+
+binary_expression = binary_expression binary_message
+                  | unary_expression
+
+binary_message = binary_selector unary_expression
+
+keyword_message_part = keyword binary_expression
+
+keyword_message = keyword_message keyword_message_part
+                | keyword_message_part
+
+mixfix_message = keyword_message reverse_keyword
+
+message = unary_expression
+        | binary_expression
+        | keyword_message
+        | mixfix_message
+
+unary_message = unit identifier*
+
+expression = message
+           | -
+
+statement_separator = "." -
+
+comma = "," -
+
+statements = statements statement_separator expression
+           | expression
+
+group = "(" statements ")"
+
+block = "{" statements "}"
+
+splat = splat comma
+      | statement
+
+list = "[" splat "]"
+
+root = - statements:body - { Array(body) }
