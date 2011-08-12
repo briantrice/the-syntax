@@ -5,6 +5,7 @@ project = 'thesyntax'
 filename_ext = 'ts'
 
 task :parser do
+  sh "kpeg -t lib/#{project}.kpeg"
   sh "kpeg -f -s lib/#{project}.kpeg"
 end
 
@@ -34,7 +35,7 @@ doctool = 'poesy'
 #  sh "rsync -a -P -e \"ssh -p 7331\" _#{doctool}/ alex@atomy-lang.org:/srv/http/atomy-lang.org/site/docs/"
 #end
 
-task :spec do
+task :spec => :parser do
   sh "rspec ./spec/parser_spec.rb"
 end
 
