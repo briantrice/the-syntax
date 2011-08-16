@@ -114,20 +114,33 @@ special_prefix_chars = /[`]/
                 | /[oO]/ < /[0-7]{1,7}/ > { [text.to_i(16)].pack("U") }
                 | /[uU]/ < /[0-9a-fA-F]{4}/ > { [text.to_i(16)].pack("U") }
 
-escape = number_escapes | escapes
+escape = number_escapes
+       | escapes
 
 string = "\"" < (("\\" escape) | str_seq)*:c > "\"" { c.join }
 
-integer = < /[+-]?[1-9][0-9]+/ >
-  { text.to_i }
+number-base-whole = /[+-]?[0-9]\d*/
+number-base-frac = /\.\d+/
+number-exponent = ("E"|"e") </[+-]?\d+/> { text.to_i }
+number-radix = "r" </\d+/> { text.to_i }
+number-base = <number-base-whole number-base-frac> { text.to_f }
+            | <number-base-whole> { text.to_i }
+number = number-base:b number-exponent:e { b * (10 ** e) }
+       | number-base:b { b }
 
-float = < integer "." integer >
-  { text.to_f }
+direct_symbol = '#' unary_selector:c { c.to_sym }
+quoted_symbol = '#' string:c { c.to_sym }
 
-number = integer
-       | float
+symbol = direct_symbol
+       | quoted_symbol
+
+particle = '#(' expression ')'
+
+pattern = symbol
+        | particle
 
 literal = string
+        | pattern
         | number
         | list
         | group
@@ -155,7 +168,7 @@ message = unary_expression
         | keyword_message
         | mixfix_message
 
-unary_message = unit identifier*
+unary_message = unit unary_selector*
 
 expression = message
            | -
@@ -172,7 +185,7 @@ group = "(" statements ")"
 block = "{" statements "}"
 
 splat = splat comma
-      | statement
+      | expression
 
 list = "[" splat "]"
 
